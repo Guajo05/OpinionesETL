@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using OpinionesETL.Application.Interfaces;
 using OpinionesETL.Infrastructure.Staging;
+using OpinionesETL.Infrastructure.Loaders;
 
 namespace OpinionesETL.Worker;
 
@@ -9,17 +10,20 @@ public sealed class EtlWorker : BackgroundService
     private readonly ILogger<EtlWorker> _logger;
     private readonly IEnumerable<IExtractor> _extractors;
     private readonly StagingWriter _stagingWriter;
+    private readonly DimensionLoader _dimensionLoader;
     private readonly IHostApplicationLifetime _lifetime;
 
     public EtlWorker(
         ILogger<EtlWorker> logger,
         IEnumerable<IExtractor> extractors,
         StagingWriter stagingWriter,
+        DimensionLoader dimensionLoader,
         IHostApplicationLifetime lifetime)
     {
         _logger = logger;
         _extractors = extractors;
         _stagingWriter = stagingWriter;
+        _dimensionLoader = dimensionLoader;
         _lifetime = lifetime;
     }
 
@@ -30,40 +34,37 @@ public sealed class EtlWorker : BackgroundService
 
         try
         {
-            // 1. Ejecutamos TODOS los extractores en paralelo para maximizar el rendimiento
+            // 1. EXTRACCIÓN
             var extractionTasks = _extractors.Select(async extractor =>
             {
                 _logger.LogInformation("Iniciando extractor: {Source}", extractor.SourceName);
                 var results = await extractor.ExtractAsync(stoppingToken);
 
-                // 2. Guardamos los resultados en Staging en cuanto cada extractor termine
                 foreach (var result in results)
                 {
                     await _stagingWriter.WriteAsync(result, stoppingToken);
                 }
-
                 return results;
             });
 
-            // Esperamos a que todas las fuentes terminen
             var allResults = await Task.WhenAll(extractionTasks);
-
             totalStopwatch.Stop();
 
-            // Resumen final
             var totalRecords = allResults.SelectMany(r => r).Sum(r => r.Count);
             _logger.LogInformation("=== EXTRACCIÓN COMPLETADA ===");
             _logger.LogInformation("Total de conjuntos de datos extraídos: {Sets}", allResults.SelectMany(r => r).Count());
             _logger.LogInformation("Total de registros extraídos: {TotalRecords}", totalRecords);
             _logger.LogInformation("Tiempo total del proceso: {Elapsed} ms", totalStopwatch.ElapsedMilliseconds);
+
+            // 2. CARGA (LOAD)
+            await _dimensionLoader.LoadDimensionsAsync(stoppingToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error crítico durante el proceso de extracción");
+            _logger.LogError(ex, "Error crítico durante el proceso de ETL");
         }
         finally
         {
-            // Detiene la aplicación (es un proceso batch, no un servicio en escucha)
             _lifetime.StopApplication();
         }
     }

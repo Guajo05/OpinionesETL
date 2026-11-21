@@ -9,7 +9,8 @@ builder.Services.Configure<DatabaseSourceOptions>(builder.Configuration.GetSecti
 builder.Services.Configure<ApiSourceOptions>(builder.Configuration.GetSection(ApiSourceOptions.SectionName));
 builder.Services.Configure<StagingOptions>(builder.Configuration.GetSection(StagingOptions.SectionName));
 
-builder.Services.AddInfrastructure(); // <-- NUEVA LÍNEA
+builder.Services.AddInfrastructure(builder.Configuration);
+
 builder.Services.AddHostedService<EtlWorker>();
 
 var host = builder.Build();

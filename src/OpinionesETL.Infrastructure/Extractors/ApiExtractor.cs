@@ -8,10 +8,6 @@ using OpinionesETL.Application.Interfaces;
 using OpinionesETL.Domain.Models;
 
 namespace OpinionesETL.Infrastructure.Extractors;
-
-/// <summary>
-/// Extrae comentarios de la API, usando paginación y descarga paralela.
-/// </summary>
 public sealed class ApiExtractor : IExtractor
 {
     public const string HttpClientName = "SocialApi";
